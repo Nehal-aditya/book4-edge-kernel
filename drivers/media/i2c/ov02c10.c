@@ -459,12 +459,29 @@ static int ov02c10_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = ov02c10_test_pattern(ov02c10, ctrl->val);
 		break;
 
-	case V4L2_CID_HFLIP:
+	case V4L2_CID_HFLIP: {
+		/*
+		 * Samsung Galaxy Book4 Edge: the module is mounted rotated by
+		 * 180 degrees, so the DT declares rotation = <180> and
+		 * libcamera consequently drives HFLIP and VFLIP together (it
+		 * cannot express a vertical-only transform - see the "Handle
+		 * horizontal and vertical flips independently" TODO in
+		 * camera_sensor_legacy.cpp). Applying both yields the true,
+		 * un-mirrored scene, but a laptop front camera wants a mirrored
+		 * self-view. Inverting HFLIP here leaves the vertical flip in
+		 * place while cancelling the horizontal one, which is exactly a
+		 * mirrored upright image. The flip controls carry no
+		 * MODIFY_LAYOUT flag on this sensor, so the Bayer order is
+		 * unaffected.
+		 */
+		unsigned int hflip = !ctrl->val;
+
 		cci_write(ov02c10->regmap, OV02C10_ISP_X_WIN_CONTROL,
-			  ctrl->val ? 2 : 1, &ret);
+			  hflip ? 2 : 1, &ret);
 		cci_update_bits(ov02c10->regmap, OV02C10_ROTATE_CONTROL,
-				BIT(3), ctrl->val ? 0 : BIT(3), &ret);
+				BIT(3), hflip ? 0 : BIT(3), &ret);
 		break;
+	}
 
 	case V4L2_CID_VFLIP:
 		cci_write(ov02c10->regmap, OV02C10_ISP_Y_WIN_CONTROL,
