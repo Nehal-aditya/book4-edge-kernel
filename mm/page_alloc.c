@@ -2463,7 +2463,7 @@ __rmqueue(struct zone *zone, unsigned int order, int migratetype,
 		 * is in the CMA area.
 		 */
 		if (alloc_flags & ALLOC_CMA &&
-		    zone_page_state(zone, NR_FREE_CMA_PAGES) >
+		    min(zone_page_state(zone, NR_FREE_CMA_PAGES), zone_cma_pages(zone)) >
 		    zone_page_state(zone, NR_FREE_PAGES) / 2) {
 			page = __rmqueue_cma_fallback(zone, order);
 			if (page)
@@ -3569,9 +3569,15 @@ static inline long __zone_watermark_unusable_free(struct zone *z,
 		unusable_free += READ_ONCE(z->nr_free_highatomic);
 
 #ifdef CONFIG_CMA
-	/* If allocation can't use CMA areas don't use free CMA pages */
+	/*
+	 * If allocation can't use CMA areas don't use free CMA pages. Never count
+	 * more than the zone's CMA pages: on the Book4 Edge (X1P42100) the
+	 * NR_FREE_CMA_PAGES counter drifts far past the 128 MB pool during uptime,
+	 * which made usable free negative and starved kswapd and atomic allocations.
+	 */
 	if (!(alloc_flags & ALLOC_CMA))
-		unusable_free += zone_page_state(z, NR_FREE_CMA_PAGES);
+		unusable_free += min(zone_page_state(z, NR_FREE_CMA_PAGES),
+				     zone_cma_pages(z));
 #endif
 
 	return unusable_free;
